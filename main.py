@@ -76,8 +76,17 @@ def valeur_pixel(image, x, y):
     print(f"La valeur du pixel {x}, {y} est {pixel_value}")
 
 
-def text_to_binaire(texte):
-    return "".join(format(ord(c), "08b") for c in texte)
+def text_to_binaire(text):
+    return "".join(format(ord(char), "08b") for char in text)
+
+
+def binaire_to_text(binary):
+    chars = []
+    for i in range(0, len(binary), 8):
+        byte = binary[i : i + 8]
+        if len(byte) == 8:
+            chars.append(chr(int(byte, 2)))
+    return "".join(chars)
 
 
 def pixels_pairs(image):
@@ -90,41 +99,40 @@ def pixels_pairs(image):
 
 def encoder_message(image, message):
 
-    message_binaire = text_to_binaire(message) + "1111111111111110"
-    pixels = list(image.getdata())
+    message_binaire = text_to_binaire(message) + "11111111"
+
+    img = pixels_pairs(image)
+    pixels = list(img.getdata())
 
     if len(message_binaire) > len(pixels):
-        raise ValueError(
-            "Le message est trop long"
-        )  # vérification du message pour voir si il est trop long par rapport aux nombre de pixels
+        raise ValueError("Message trop long pour cette image.")
 
-    pixels_modifies = []
+    new_pixels = []
     for i in range(len(message_binaire)):
-        pixel = pixels[i]
-        if message_binaire[i] == "1":
-            pixels_modifies.append(pixel + 1)
-        else:
-            pixels_modifies.append(pixel)
+        p = pixels[i]
+        bit = int(message_binaire[i])
+        new_pixels.append(p + bit)
 
-    pixels_modifies += pixels[len(message_binaire) :]
+    new_pixels += pixels[len(message_binaire) :]
 
-    new_img = Image.new("L", image.size)
-    new_img.putdata(pixels_modifies)
+    new_img = Image.new("L", img.size)
+    new_img.putdata(new_pixels)
+
     return new_img
 
 
 def decoder_message(image):
     pixels = list(image.getdata())
-    bits = [str(p % 2) for p in pixels]
-    message_binaire = "".join(bits)
+    bits = ""
 
-    octets = [message_binaire[i : i + 8] for i in range(0, len(message_binaire), 8)]
-    message = ""
-    for octet in octets:
-        if octet == "11111111":
+    for p in pixels:
+        bits += str(p % 2)
+
+        if bits.endswith("11111111"):
+            bits = bits[:-8]
             break
-        message += chr(int(octet, 2))
-    return message
+
+    return binaire_to_text(bits)
 
 
 if __name__ == "__main__":
