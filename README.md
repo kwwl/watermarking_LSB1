@@ -1,92 +1,135 @@
-🔐 LSB1 Watermarking – Stéganographie & Encodage de Mot de Passe
+# 🔐 LSB1 Watermarking
+Stéganographie d’un mot de passe dans une image — Projet réalisé dans le cadre d’un TP universitaire
+🌍 Démo en ligne
 
-📘 Projet réalisé dans le cadre d’un TP de cours portant sur la stéganographie et l’exploitation du LSB1.
-
-Une application moderne permettant de cacher un mot de passe dans une image grâce à la stéganographie LSB1 (Least Significant Bit).
-Développée en Python avec Streamlit pour l’interface et Pillow pour le traitement d’images.
-
-🌍 💻 Version en ligne (déployée)
-
-Accédez à l'application ici :
 👉 https://watermarkinglsb1.streamlit.app/
 
-Aucune installation nécessaire.
-Upload une image → encode → télécharge → décode.
+(Aucune installation nécessaire — interface Streamlit)
 
-🎓 Contexte pédagogique
+## 📝 Présentation du projet
 
-Ce projet a été développé dans le cadre d’un Travaux Pratique (TP) visant à :
+Ce projet a été réalisé dans le cadre d’un Travaux Pratique (TP) de cours, visant à introduire les concepts de :
 
-comprendre la stéganographie par manipulation des bits les moins significatifs (LSB),
+Stéganographie
 
-concevoir une séparation claire backend / frontend,
+Manipulation des bits (LSB1)
 
-produire une interface moderne,
+Traitement d’images
 
-expérimenter un workflow complet : codage → interface → déploiement.
+Interface utilisateur en Python
 
-Il ne s’agit pas d’un outil de sécurité avancé mais d’une démonstration académique.
+Séparation propre backend / frontend
 
-🌟 Fonctionnalités
-✔️ Encodage d’un mot de passe
+Déploiement sur Streamlit Cloud
 
-Upload image PNG/JPG
+Le but : cacher un mot de passe dans une image en modifiant les bits les moins significatifs des pixels, sans altérer visuellement l’image.
+
+✨ Fonctionnalités principales
+## 🔐 Encodage
+
+Upload d’une image (PNG/JPG)
 
 Conversion en niveaux de gris
 
-Encodage dans les LSB
+Mise à zéro des pixels impairs (normalisation)
 
-Marqueur de fin sécurisé
+Encodage bit par bit du message
 
-Visualisation avant / après
+Ajout d’un marqueur de fin "1111111111111110"
 
-Téléchargement de l’image encodée
+Affichage de l'image encodée
 
-✔️ Décodage
+Téléchargement direct
 
-Extraction automatique du message caché
+## 🔓 Décodage
 
-Affichage instantané du mot de passe
+Extraction automatique des LSB
 
-✔️ Séparation logique du code
+Reconstruction du message original
 
-main.py → backend (fonctions)
+Affichage en clair dans l’interface
 
-app.py → frontend (Streamlit UI)
+## 🧠 Architecture claire
 
-🚀 Installation
-1️⃣ Cloner le repo
+main.py → toutes les fonctions de traitement (backend)
+
+app.py → interface Streamlit (frontend)
+
+## 🏗️ Structure du projet
+📁 LSB1-Watermarking
+│
+├── app.py                # Interface Streamlit (frontend)
+├── main.py               # Algorithmes de stéganographie (backend)
+├── requirements.txt      # Dépendances Python
+└── asset/                # Images utilisées pour les tests
+
+## ⚙️ Installation & Lancement
+1️⃣ Cloner le repository
 git clone https://github.com/USERNAME/LSB1-watermarking.git
 cd LSB1-watermarking
 
 2️⃣ Installer les dépendances
 pip install -r requirements.txt
 
-3️⃣ Lancer l’app
+3️⃣ Lancer l'application
 streamlit run app.py
 
-🔎 Fonctionnement LSB1 en bref
+## 🔬 Comment fonctionne la méthode LSB1 ?
 
-Le dernier bit (LSB) d’un pixel peut être modifié sans impact visuel.
-Ton message converti en binaire vient remplacer ces bits un par un.
+La stéganographie LSB1 (Least Significant Bit 1) consiste à modifier uniquement le bit le moins significatif de chaque pixel.
 
-✔️ Invisible
-✔️ Réversible
-✔️ Parfait pour un TP pédagogique
+## ✔️ Étapes d'encodage
 
-📂 Structure
-📁 LSB1-watermarking
- ├── app.py
- ├── main.py
- ├── requirements.txt
- └── asset/
+Transformer le message en binaire
 
-🛠️ Technologies
+S’assurer que tous les pixels sont pairs
 
-Python
+Injecter les bits du message dans les LSB
 
-Streamlit
+Ajouter un marqueur final pour stopper la lecture
 
-Pillow (PIL)
+## ✔️ Étapes de décodage
 
-Stéganographie LSB1
+Récupérer tous les LSB des pixels
+
+Regrouper les bits par blocs de 8
+
+Convertir chaque bloc en caractère
+
+Arrêter au marqueur de fin
+
+🎯 Invisible à l’œil, parfaitement réversible.
+
+🛠️ Technologies utilisées
+
+Python 3
+
+Streamlit (UI)
+
+Pillow (PIL) (traitement d’image)
+
+GitHub + Streamlit Cloud (déploiement)
+
+## 🧑‍🏫 Contexte académique
+
+Ce projet a été conçu pour :
+
+comprendre les méthodes d’encodage de messages,
+
+apprendre la manipulation à bas niveau des bits,
+
+développer une interface ergonomique,
+
+travailler comme dans un vrai environnement logiciel.
+
+Il s’agit d’un TP pédagogique, pas d’un outil de cybersécurité avancé.
+
+## ⭐ Améliorations possibles
+
+Support des images en couleur (3 canaux)
+
+Cryptage du message avant encodage
+
+Interface en mode clair/sombre
+
+Détection automatique de corruption de message
