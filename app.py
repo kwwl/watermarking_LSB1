@@ -1,30 +1,13 @@
 import streamlit as st
 from PIL import Image
-from io import BytesIO
-import hashlib
-
-# Essayer d'importer Fernet pour chiffrement symétrique (optionnel)
-try:
-    from cryptography.fernet import Fernet
-
-    HAS_FERNET = True
-except Exception:
-    HAS_FERNET = False
+import io
 
 
-# ---------------------------
-# Fonctions LSB1 (niveaux de gris)
-# ---------------------------
-def texte_en_binaire(texte: str) -> str:
-    """Convertit le texte en chaîne binaire (8 bits par caractère)."""
+def text_to_binaire(texte):
     return "".join(format(ord(c), "08b") for c in texte)
 
 
-END_MARKER = "1111111111111110"  # marqueur de fin
-
-
-def pixels_pairs(image: Image.Image) -> Image.Image:
-    """Rend tous les pixels pair (LSB = 0). On travaille en niveaux de gris."""
+def pixels_pairs(image):
     pixels = list(image.getdata())
     pixels_pairs = [p if p % 2 == 0 else p - 1 for p in pixels]
     new_img = Image.new("L", image.size)
@@ -32,41 +15,21 @@ def pixels_pairs(image: Image.Image) -> Image.Image:
     return new_img
 
 
-def encoder_message(image: Image.Image, message: str) -> Image.Image:
-    """
-    Encode message (str) dans l'image (mode 'L') en modifiant le LSB de chaque pixel.
-    Retourne une nouvelle Image.
-    """
-    if image.mode != "L":
-        raise ValueError("L'image doit être en niveaux de gris (mode 'L').")
-
-    message_binaire = texte_en_binaire(message) + END_MARKER
+def encoder_message(image, message):
+    message_binaire = text_to_binaire(message) + "1111111111111110"
     pixels = list(image.getdata())
 
     if len(message_binaire) > len(pixels):
-        raise ValueError("Le message est trop long pour cette image (trop de bits).")
+        raise ValueError("Le message est trop long par rapport au nombre de pixels")
 
     pixels_modifies = []
     for i in range(len(message_binaire)):
         pixel = pixels[i]
-        # on suppose que les pixels de base sont pairs (si ce n'est pas le cas,
-        # appeler pixels_pairs avant)
         if message_binaire[i] == "1":
-            # si pixel est 255 (max) et impair on ne veut pas dépasser, on gère marge
-            if pixel == 255:
-                pixels_modifies.append(
-                    254
-                )  # 254 est pair -> LSB=0 mais force variation minimale
-            else:
-                pixels_modifies.append(pixel + 1)
+            pixels_modifies.append(pixel + 1)
         else:
-            # si pixel est impair, on le rend pair ; si déjà pair on laisse
-            if pixel % 2 == 0:
-                pixels_modifies.append(pixel)
-            else:
-                pixels_modifies.append(pixel - 1)
+            pixels_modifies.append(pixel)
 
-    # ajouter le reste non modifié
     pixels_modifies += pixels[len(message_binaire) :]
 
     new_img = Image.new("L", image.size)
@@ -74,209 +37,312 @@ def encoder_message(image: Image.Image, message: str) -> Image.Image:
     return new_img
 
 
-def decoder_message(image: Image.Image) -> str:
-    """Lit les LSB de l'image et reconstruit le message jusqu'au marqueur de fin."""
+def decoder_message(image):
     pixels = list(image.getdata())
-    bits = "".join(str(p % 2) for p in pixels)
-    # Chercher marqueur de fin
-    end_idx = bits.find(END_MARKER)
-    if end_idx == -1:
-        # pas de marqueur trouvé
-        return ""
+    bits = [str(p % 2) for p in pixels]
+    message_binaire = "".join(bits)
 
-    useful_bits = bits[:end_idx]  # tout jusqu'au marqueur (exclu)
-    # reconstruire par octets
-    octets = [useful_bits[i : i + 8] for i in range(0, len(useful_bits), 8)]
-    message_chars = []
-    for o in octets:
-        if len(o) < 8:
+    octets = [message_binaire[i : i + 8] for i in range(0, len(message_binaire), 8)]
+
+    message = ""
+    for octet in octets:
+        if octet == "11111111":
             break
-        try:
-            message_chars.append(chr(int(o, 2)))
-        except Exception:
-            message_chars.append("?")
-    return "".join(message_chars)
+        message += chr(int(octet, 2))
+
+    return message
 
 
-# ---------------------------
-# Utilitaires
-# ---------------------------
-def image_to_bytes(img: Image.Image, fmt="PNG") -> bytes:
-    bio = BytesIO()
-    img.save(bio, format=fmt)
-    return bio.getvalue()
+st.set_page_config(page_title="Image Steganography", page_icon="🔒", layout="wide")
 
-
-def generate_fernet_key() -> bytes:
-    return Fernet.generate_key()
-
-
-def fernet_encrypt(key: bytes, plaintext: str) -> bytes:
-    f = Fernet(key)
-    return f.encrypt(plaintext.encode())
-
-
-def fernet_decrypt(key: bytes, ciphertext: bytes) -> str:
-    f = Fernet(key)
-    return f.decrypt(ciphertext).decode()
-
-
-# ---------------------------
-# Streamlit UI
-# ---------------------------
-st.set_page_config(page_title="LSB1 Watermarking (Pillow) - Démo", layout="wide")
-
-st.title("Démo LSB1 — cacher un mot de passe dans une image (Pillow + Streamlit)")
 st.markdown(
     """
-Cette application illustre l'algorithme **LSB1** (Least Significant Bit).
-- L'image est convertie en niveaux de gris (mode 'L').
-- Chaque pixel stocke 1 bit du message dans son LSB.
-- Un marqueur de fin est ajouté pour retrouver la longueur du message.
-"""
+    <style>
+    .main {
+        background: linear-gradient(135deg, #f5f7fa 0%, #e4e8ec 100%);
+    }
+    .stButton>button {
+        width: 100%;
+        background-color: #1e293b;
+        color: white;
+        border-radius: 10px;
+        padding: 0.75rem;
+        font-weight: 600;
+        border: none;
+        transition: all 0.3s;
+    }
+    .stButton>button:hover {
+        background-color: #334155;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    .upload-box {
+        border: 2px dashed #cbd5e1;
+        border-radius: 15px;
+        padding: 2rem;
+        text-align: center;
+        background: white;
+        transition: all 0.3s;
+    }
+    .success-box {
+        background: #dcfce7;
+        border: 2px solid #86efac;
+        border-radius: 15px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+    }
+    .info-box {
+        background: #fef3c7;
+        border: 2px solid #fcd34d;
+        border-radius: 15px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+    }
+    h1 {
+        color: #1e293b;
+        font-size: 2.5rem;
+        font-weight: 700;
+        text-align: center;
+        margin-bottom: 0.5rem;
+    }
+    .subtitle {
+        text-align: center;
+        color: #64748b;
+        font-size: 1.1rem;
+        margin-bottom: 2rem;
+    }
+    </style>
+""",
+    unsafe_allow_html=True,
 )
 
-col1, col2 = st.columns([1, 1])
-
-with col1:
-    st.header("1) Charger une image")
-    uploaded = st.file_uploader(
-        "Choisis une image (jpg/png). Elle sera convertie en niveaux de gris.",
-        type=["png", "jpg", "jpeg"],
-    )
-    if uploaded is not None:
-        img = Image.open(uploaded).convert("L")
-        st.image(
-            img,
-            caption="Image convertie en niveaux de gris (originale)",
-            use_column_width=True,
-        )
-    else:
-        st.info("Upload une image pour commencer.")
-
-with col2:
-    st.header("2) Entrer le mot de passe à cacher")
-    mdp = st.text_input("Mot de passe (mdp) à cacher", type="password")
-    show_binary = st.checkbox("Afficher le binaire du mot de passe", value=False)
-    show_pixels_prep = st.checkbox(
-        "Forcer pixels pairs avant encodage (recommandé)", value=True
-    )
-
-st.markdown("---")
-
-# Affichage du binaire du mdp
-if mdp and show_binary:
-    st.subheader("Binaire du mot de passe")
-    b = texte_en_binaire(mdp)
-    st.code(b)
-
-# Encodage + affichage
-st.header("Encodage / Décodage")
-colA, colB, colC = st.columns([1, 1, 1])
-
-with colA:
-    if uploaded is None:
-        st.write("Upload une image pour encoder.")
-    else:
-        if st.button("Encoder le mdp dans l'image"):
-            try:
-                base_img = img.copy()
-                if show_pixels_prep:
-                    base_img = pixels_pairs(base_img)
-                encoded = encoder_message(base_img, mdp)
-                st.success("Encodage terminé ✅")
-                # stocker dans le state temporaire
-                st.session_state["encoded_image_bytes"] = image_to_bytes(
-                    encoded, fmt="PNG"
-                )
-                st.session_state["encoded_image_obj"] = encoded
-            except Exception as e:
-                st.error(f"Erreur pendant l'encodage : {e}")
-
-with colB:
-    if "encoded_image_obj" in st.session_state:
-        st.image(
-            st.session_state["encoded_image_obj"],
-            caption="Image encodée",
-            use_column_width=True,
-        )
-        st.download_button(
-            "Télécharger l'image encodée (PNG)",
-            data=st.session_state["encoded_image_bytes"],
-            file_name="encoded.png",
-            mime="image/png",
-        )
-    else:
-        st.info("Après encodage, l'image encodée apparaîtra ici.")
-
-with colC:
-    if "encoded_image_obj" in st.session_state:
-        if st.button("Décoder le message depuis l'image encodée"):
-            decoded = decoder_message(st.session_state["encoded_image_obj"])
-            if decoded:
-                st.success("Message décodé :")
-                st.write(decoded)
-            else:
-                st.warning("Aucun message détecté (marqueur de fin introuvable).")
-    else:
-        st.info("Encode d'abord pour ensuite décoder.")
-
-st.markdown("---")
-
-# Section chiffrement / hash du mdp
-st.header("Chiffrement / Hash du mot de passe (affichage)")
-
-colE, colF = st.columns(2)
-with colE:
-    st.subheader("SHA-256 (hash)")
-    if mdp:
-        sha = hashlib.sha256(mdp.encode()).hexdigest()
-        st.code(sha)
-    else:
-        st.write("Renseigne un mot de passe pour afficher son hash SHA-256.")
-
-with colF:
-    st.subheader("Chiffrement symétrique (Fernet) — optionnel")
-    if not HAS_FERNET:
-        st.info(
-            "La librairie 'cryptography' n'est pas installée. Installe-la pour tester Fernet."
-        )
-    else:
-        key = st.session_state.get("fernet_key", None)
-        if key is None:
-            if st.button("Générer une clé Fernet"):
-                new_key = generate_fernet_key()
-                st.session_state["fernet_key"] = new_key
-                st.success("Clé générée et stockée en session.")
-                key = new_key
-        if key:
-            st.code(key.decode())
-            if mdp:
-                if st.button("Chiffrer le mot de passe (Fernet)"):
-                    ct = fernet_encrypt(key, mdp)
-                    st.session_state["fernet_ct"] = ct
-                    st.success("Mot de passe chiffré (Fernet).")
-                if "fernet_ct" in st.session_state:
-                    st.subheader("Texte chiffré (base64)")
-                    st.code(st.session_state["fernet_ct"].decode())
-
-st.markdown("---")
-st.caption(
-    "Remarque : l'interface montre des démonstrations pédagogiques. En production, ne jamais afficher ni stocker des mots de passe en clair."
+st.title("🔒 Image Steganography")
+st.markdown(
+    '<p class="subtitle">Cachez des messages secrets dans vos images en utilisant la technique LSB</p>',
+    unsafe_allow_html=True,
 )
 
-# Footer : afficher image originale et encodée côte-à-côte si dispo
-st.header("Aperçu final")
-if uploaded:
-    if "encoded_image_obj" in st.session_state:
-        c1, c2 = st.columns(2)
-        with c1:
-            st.image(img, caption="Original (gris)", use_column_width=True)
-        with c2:
-            st.image(
-                st.session_state["encoded_image_obj"],
-                caption="Encodée",
-                use_column_width=True,
+tab1, tab2, tab3 = st.tabs(
+    ["📝 Encoder un message", "🔓 Décoder un message", "ℹ️ À propos"]
+)
+
+with tab1:
+    st.markdown("### 🔐 Encoder un message secret")
+
+    col1, col2 = st.columns([1, 1])
+
+    with col1:
+        st.markdown("#### 📤 Charger une image")
+        uploaded_file = st.file_uploader(
+            "Choisissez une image",
+            type=["png", "jpg", "jpeg"],
+            key="encode_upload",
+            help="Formats supportés: PNG, JPG, JPEG",
+        )
+
+        if uploaded_file is not None:
+            image = Image.open(uploaded_file).convert("L")
+            st.image(image, caption="Image originale", use_container_width=True)
+
+            st.markdown("#### ✍️ Message secret")
+            message = st.text_area(
+                "Entrez votre message",
+                placeholder="Tapez votre message secret ici...",
+                height=150,
+                help="Le message sera caché dans les pixels de l'image",
             )
-    else:
-        st.image(img, caption="Original (gris)", use_column_width=True)
+
+            if st.button("🔒 Encoder le message", type="primary"):
+                if message:
+                    try:
+                        with st.spinner("Encodage en cours..."):
+                            img_pairs = pixels_pairs(image)
+                            img_encoded = encoder_message(img_pairs, message)
+
+                            st.session_state["encoded_image"] = img_encoded
+                            st.session_state["message_encoded"] = True
+
+                        st.success("✅ Message encodé avec succès!")
+                        st.balloons()
+                    except ValueError as e:
+                        st.error(f"❌ Erreur: {str(e)}")
+                else:
+                    st.warning("⚠️ Veuillez entrer un message à encoder")
+
+    with col2:
+        st.markdown("#### 🖼️ Résultat")
+
+        if "encoded_image" in st.session_state and st.session_state.get(
+            "message_encoded"
+        ):
+            encoded_img = st.session_state["encoded_image"]
+
+            st.markdown('<div class="success-box">', unsafe_allow_html=True)
+            st.markdown("**✨ Image encodée avec succès!**")
+            st.markdown("Le message est maintenant invisible à l'œil nu")
+            st.markdown("</div>", unsafe_allow_html=True)
+
+            st.image(
+                encoded_img,
+                caption="Image avec message caché",
+                use_container_width=True,
+            )
+
+            buf = io.BytesIO()
+            encoded_img.save(buf, format="PNG")
+            byte_im = buf.getvalue()
+
+            st.download_button(
+                label="📥 Télécharger l'image encodée",
+                data=byte_im,
+                file_name="image_encoded.png",
+                mime="image/png",
+                use_container_width=True,
+            )
+
+            st.info(
+                "💡 **Astuce:** Téléchargez cette image et utilisez l'onglet 'Décoder' pour retrouver le message caché"
+            )
+        else:
+            st.markdown('<div class="upload-box">', unsafe_allow_html=True)
+            st.markdown("📸")
+            st.markdown("**L'image encodée apparaîtra ici**")
+            st.markdown("Chargez une image et entrez un message pour commencer")
+            st.markdown("</div>", unsafe_allow_html=True)
+
+with tab2:
+    st.markdown("### 🔓 Décoder un message caché")
+
+    col1, col2 = st.columns([1, 1])
+
+    with col1:
+        st.markdown("#### 📤 Charger l'image encodée")
+        decode_file = st.file_uploader(
+            "Choisissez une image encodée",
+            type=["png", "jpg", "jpeg"],
+            key="decode_upload",
+            help="Chargez une image contenant un message caché",
+        )
+
+        if decode_file is not None:
+            decode_image = Image.open(decode_file).convert("L")
+            st.image(decode_image, caption="Image encodée", use_container_width=True)
+
+            if st.button("🔓 Décoder le message", type="primary"):
+                try:
+                    with st.spinner("Décodage en cours..."):
+                        decoded_msg = decoder_message(decode_image)
+                        st.session_state["decoded_message"] = decoded_msg
+
+                    st.success("✅ Message décodé avec succès!")
+                except Exception as e:
+                    st.error(f"❌ Erreur lors du décodage: {str(e)}")
+
+    with col2:
+        st.markdown("#### 📨 Message décodé")
+
+        if "decoded_message" in st.session_state:
+            st.markdown('<div class="info-box">', unsafe_allow_html=True)
+            st.markdown("**🔓 Message secret révélé:**")
+            st.markdown("</div>", unsafe_allow_html=True)
+
+            st.text_area(
+                "",
+                value=st.session_state["decoded_message"],
+                height=200,
+                disabled=True,
+                key="decoded_text",
+            )
+
+            if st.button("📋 Copier le message"):
+                st.code(st.session_state["decoded_message"], language=None)
+        else:
+            st.markdown('<div class="upload-box">', unsafe_allow_html=True)
+            st.markdown("💬")
+            st.markdown("**Le message décodé apparaîtra ici**")
+            st.markdown("Chargez une image encodée pour révéler le message secret")
+            st.markdown("</div>", unsafe_allow_html=True)
+
+with tab3:
+    st.markdown("### ℹ️ À propos de la stéganographie")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.markdown(
+            """
+        <div style="background: white; padding: 1.5rem; border-radius: 15px; height: 100%;">
+            <h4>🔐 Sécurité invisible</h4>
+            <p>Les messages sont cachés dans les données des pixels, les rendant complètement invisibles sans décodage.</p>
+        </div>
+        """,
+            unsafe_allow_html=True,
+        )
+
+    with col2:
+        st.markdown(
+            """
+        <div style="background: white; padding: 1.5rem; border-radius: 15px; height: 100%;">
+            <h4>🖼️ Qualité d'image</h4>
+            <p>L'image encodée semble identique à l'originale, préservant la qualité visuelle complète.</p>
+        </div>
+        """,
+            unsafe_allow_html=True,
+        )
+
+    with col3:
+        st.markdown(
+            """
+        <div style="background: white; padding: 1.5rem; border-radius: 15px; height: 100%;">
+            <h4>🔓 Récupération facile</h4>
+            <p>Toute personne avec l'image encodée peut extraire le message caché en utilisant le décodeur.</p>
+        </div>
+        """,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("---")
+
+    st.markdown("### 🔬 Comment ça marche?")
+
+    st.markdown(
+        """
+    La **stéganographie LSB (Least Significant Bit)** est une technique qui cache des informations dans les bits les moins significatifs des pixels d'une image.
+
+    #### 📝 Processus d'encodage:
+    1. **Conversion du texte** → Le message est converti en binaire (0 et 1)
+    2. **Normalisation des pixels** → Les pixels sont rendus pairs pour préparer l'encodage
+    3. **Modification des LSB** → Les bits du message remplacent les bits les moins significatifs des pixels
+    4. **Marqueur de fin** → Un marqueur spécial indique la fin du message
+
+    #### 🔍 Processus de décodage:
+    1. **Extraction des LSB** → Les bits les moins significatifs sont extraits de chaque pixel
+    2. **Reconstruction** → Les bits sont regroupés en octets (8 bits)
+    3. **Conversion** → Les octets sont convertis en caractères
+    4. **Arrêt** → La lecture s'arrête au marqueur de fin
+
+    #### ✨ Avantages:
+    - ✅ Invisible à l'œil nu
+    - ✅ Aucune perte de qualité perceptible
+    - ✅ Simple et efficace
+    - ✅ Difficile à détecter sans analyse approfondie
+    """
+    )
+
+    st.markdown("---")
+
+    st.markdown(
+        """
+    <div style="text-align: center; color: #64748b; padding: 2rem;">
+        <p>Développé avec ❤️ en utilisant Python, Streamlit et PIL</p>
+    </div>
+    """,
+        unsafe_allow_html=True,
+    )
+
+if "encoded_image" not in st.session_state:
+    st.session_state["encoded_image"] = None
+if "message_encoded" not in st.session_state:
+    st.session_state["message_encoded"] = False
+if "decoded_message" not in st.session_state:
+    st.session_state["decoded_message"] = None
